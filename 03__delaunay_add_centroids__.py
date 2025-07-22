@@ -6,19 +6,8 @@ import os
 def compute_centroids_delaunay_xyz(xyz_path: str, alpha: float | None = None,
                                    save_xyz: bool = True, out_dir: str = "output"):
     """
-    Builds a surface mesh via α-shape (Delaunay-based) from a low-res point cloud
-    and inserts new points at triangle centroids.
-
-    Parameters
-    ----------
-    xyz_path : str
-        Path to low-res *.xyz* file (N×3).
-    alpha : float | None
-        α radius. If None, estimated adaptively (≈2×mean NN distance).
-    save_xyz : bool
-        If True, writes new centroids to *_centroids.xyz* in ``out_dir``.
-    out_dir : str
-        Output directory for saved files.
+    from a low-res point cloud
+    inserts new points at triangle centroids.
 
     Returns
     -------
