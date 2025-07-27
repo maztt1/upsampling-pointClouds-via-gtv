@@ -13,8 +13,7 @@ def compute_centroids_delaunay_xyz(xyz_path: str, alpha: float | None = None,
     -------
     centroids : (M,3) ndarray
         Array of inserted points.
-    mesh : o3d.geometry.TriangleMesh
-        Surface mesh built from α-shape (for debugging / visualisation).
+    o3d.geometry.TriangleMesh.
     """
 
     pts = np.loadtxt(xyz_path)
