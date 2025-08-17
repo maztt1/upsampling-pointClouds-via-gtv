@@ -128,7 +128,7 @@ def main():
     ap = argparse.ArgumentParser("Step 05 — partition RED/BLUE sets (v2.4)")
     ap.add_argument("--dir", default="intermediate", help="directory containing points_all.xyz, edges.npy, weights.npy")
     ap.add_argument("--min-cross", type=int, default=2, help="required opposite-colour neighbours (default 2)")
-    ap.add_argument("--view", action="store_true", help="visualise colouring in Open3D viewer")
+    ap.add_argument("--view", action="store_true", help="visualise  colouring in Open3D viewer")
     args = ap.parse_args()
 
     d = Path(args.dir)
