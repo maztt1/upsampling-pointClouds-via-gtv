@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 PY = sys.executable                            # current Python interpreter
-ROOT = Path(__file__).resolve().parent         # folder containing this script
+ROOT = Path(__file__).resolve().parent         # folderr containing this script
 SCRIPT_06 = ROOT / "06__prepare_admm_matrices__.py"
 SCRIPT_07 = ROOT / "07__ADMM__solver__.py"
 
