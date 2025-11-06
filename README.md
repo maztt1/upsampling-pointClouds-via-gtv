@@ -1,93 +1,171 @@
 # Upsampling via GTV
 
+**3D Point Cloud Super-Resolution via Graph Total Variation on Surface Normals**
+Implementation of the method described in the paper *“3D Point Cloud Super-Resolution via Graph Total Variation on Surface Normals.”*
+This repository reproduces the full pipeline for upsampling sparse 3D point clouds using Python, Open3D, and SciPy.
 
+---
 
-## Getting started
+## 🔧 Dependencies
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+* Python ≥ 3.9
+* `numpy`, `scipy`, `open3d`, `trimesh`, `matplotlib`
+  Install dependencies:
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
-
-```
-cd existing_repo
-git remote add origin https://gitlab.lms.tf.fau.de/marina.ritthaler/upsampling-via-gtv.git
-git branch -M main
-git push -uf origin main
+```bash
+pip install numpy scipy open3d trimesh matplotlib
 ```
 
-## Integrate with your tools
+---
 
-- [ ] [Set up project integrations](https://gitlab.lms.tf.fau.de/marina.ritthaler/upsampling-via-gtv/-/settings/integrations)
+## 📁 Repository Structure
 
-## Collaborate with your team
+| File                             | Description                                                                                                          |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **01_extract_and_downsample.py** | Loads a `.ply` mesh, extracts vertices, and creates a random downsampled point cloud.                                |
+| **02_visualize_xyz.py**          | Visualizes `.xyz` point clouds using Open3D or Matplotlib.                                                           |
+| **03_delaunay_add_centroids.py** | Generates new points at triangle centroids using Delaunay triangulation to densify the input cloud.                  |
+| **04_knn_graph_and_normals.py**  | Builds a *k-nearest neighbors* (kNN) graph, estimates surface normals, and computes edge weights.                    |
+| **06_prepare_admm_matrices.py**  | Prepares the ADMM optimization matrices (B, v, C, q).                                                                |
+| **07_admm_solver.py**            | Runs the ADMM optimization for Graph Total Variation (gTV) on surface normals.                                       |
+| **08_merge_and_evaluate.py**     | Merges optimized point sets, computes Chamfer/Hausdorff distances, and saves the final cloud.                        |
+| **09_run_red_and_blue.py**       | Automates the entire pipeline (06→07→merge), applies multi-stage outlier filtering, and saves final colored results. |
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+---
 
-## Test and Deploy
+## ▶️ Execution Order
 
-Use the built-in continuous integration in GitLab.
+Recommended processing flow:
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+```bash
+python 01_extract_and_downsample.py
+python 02_visualize_xyz.py
+python 03_delaunay_add_centroids.py
+python 04_knn_graph_and_normals.py
+python 06_prepare_admm_matrices.py --opt red --low-res input/Asterix_downsampled_30pct.xyz
+python 07_admm_solver.py --opt red
+python 08_merge_and_evaluate.py
+```
 
-***
+Or run the entire automated version:
 
-# Editing this README
+```bash
+python 09_run_red_and_blue.py --preset D --low-res input/Asterix_downsampled_30pct.xyz
+```
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+---
 
-## Suggestions for a good README
+## ⚙️ Key Parameters
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+### 03_delaunay_add_centroids.py
 
-## Name
-Choose a self-explaining name for your project.
+| Flag      | Description                             | Default       | Range/Notes                         |
+| --------- | --------------------------------------- | ------------- | ----------------------------------- |
+| `alpha`   | Alpha value for Delaunay reconstruction | Auto-computed | Typical: 1.5–3.0 × mean NN distance |
+| `out_dir` | Output directory                        | `output`      | Must exist or will be created       |
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+Example:
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+```bash
+python 03_delaunay_add_centroids.py --alpha 2.5
+```
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+---
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+### 04_knn_graph_and_normals.py
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+| Flag | Description                 | Default | Range/Notes                     |
+| ---- | --------------------------- | ------- | ------------------------------- |
+| `k`  | Number of nearest neighbors | 8       | 5–20 depending on cloud density |
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+This step saves:
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+```
+intermediate/points_all.xyz
+intermediate/edges.npy
+intermediate/weights.npy
+intermediate/normals.npy
+```
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+---
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+### 06_prepare_admm_matrices.py
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+| Flag        | Description                            | Example                                         | Notes                           |
+| ----------- | -------------------------------------- | ----------------------------------------------- | ------------------------------- |
+| `--opt`     | Select color set (`red` or `blue`)     | `--opt red`                                     | Run both sets separately        |
+| `--dir`     | Directory containing intermediate data | `--dir intermediate`                            | Must match previous step output |
+| `--low-res` | Path to low-res input cloud            | `--low-res input/Asterix_downsampled_30pct.xyz` | Used to fix constraints         |
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+Output:
 
-## License
-For open source projects, say how it is licensed.
+```
+intermediate/B_red.npz, v_red.npy, C.npz, q.npy
+```
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+---
+
+### 07_admm_solver.py
+
+| Flag          | Description               | Default | Typical Range              |
+| ------------- | ------------------------- | ------- | -------------------------- |
+| `--opt`       | Optimize color set        | `red`   | `red` / `blue`             |
+| `--lam`       | Regularization weight     | `5e-2`  | 1e-3 to 1e-1               |
+| `--rho`       | Initial ADMM penalty      | `1.0`   | 0.5–50                     |
+| `--tol`       | Convergence tolerance     | `1e-4`  | 1e-3 to 1e-6               |
+| `--max-iters` | Maximum iterations        | 200     | Adjust if slow convergence |
+| `--eps-reg`   | Regularization for solver | 1e-6    | Stabilizes inversion       |
+
+Example:
+
+```bash
+python 07_admm_solver.py --opt red --lam 0.05 --rho 1.0 --tol 1e-4 --max-iters 150
+```
+
+---
+
+### 09_run_red_and_blue.py
+
+Automates both optimization sets and post-filtering.
+
+| Flag                    | Description                       | Default  | Range/Notes                             |
+| ----------------------- | --------------------------------- | -------- | --------------------------------------- |
+| `--preset`              | Parameter preset (`D` or `E`)     | Required | `D` = more smoothing, `E` = more detail |
+| `--abs-max`             | Removes extreme coordinates       | `None`   | e.g., `--abs-max 5.0`                   |
+| `--radius-keep-pct`     | Keep percentile for radius filter | 99.9     | 95–100                                  |
+| `--knn-k`               | k for kNN filter                  | 8        | 5–15                                    |
+| `--knn-keep-pct`        | Keep percentile for kNN filter    | 99.9     | 90–100                                  |
+| `--iter-outlier-passes` | Number of passes                  | 2        | 1–3                                     |
+
+Example full command:
+
+```bash
+python 09_run_red_and_blue.py --preset D --low-res input/Asterix_downsampled_30pct.xyz --abs-max 4.5 --iter-outlier-passes 2
+```
+
+---
+
+## 📊 Output Files
+
+| File                                     | Description                              |
+| ---------------------------------------- | ---------------------------------------- |
+| `output/pointcloud_superres.xyz`         | Final reconstructed dense cloud          |
+| `output/pointcloud_superres_colored.ply` | Colored visualization (red/blue sets)    |
+| `intermediate/*`                         | Step-wise matrices and temporary results |
+
+---
+
+## 🧠 Citation
+
+If you use or adapt this code, please cite:
+
+> [Original paper] *3D Point Cloud Super-Resolution via Graph Total Variation on Surface Normals.*
+
+---
+
+## 🧩 Author
+
+**Mohamad Ahmadzadeh**
+Master’s Student, Friedrich-Alexander-Universität Erlangen-Nürnberg
+HiWi Research Assistant — 3D Atom Probe Tomography Reconstruction
+📧 [[mohamad.ahmadzadeh@fau.de](mailto:mohamad.ahmadzadeh@fau.de)]

@@ -4,4 +4,7 @@
     <option name="sdkName" value="3d_upsampling (2)" />
   </component>
   <component name="ProjectRootManager" version="2" project-jdk-name="upsampling-via-gtv" project-jdk-type="Python SDK" />
+  <component name="PythonCompatibilityInspectionAdvertiser">
+    <option name="version" value="3" />
+  </component>
 </project>

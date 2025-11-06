@@ -1,154 +1,101 @@
 #!/usr/bin/env python3
 """
-Step 05 — Partition graph into RED / BLUE sets
-
-Goal
-----
-Assign 0/1 labels so every vertex has at least `min_cross` neighbors with the
-opposite color (default 2). The original edge set is preserved.
-
-Why v2.4?
----------
-Earlier versions deleted same-color edges to force bipartiteness, which broke
-later steps that expect intra-set edges. Dinesh et al. only require the
-cross-neighbor guarantee, not a strictly bipartite graph. v2.4 keeps all edges
-and flips colors until the cross-degree constraint is satisfied.
-
-Outputs
--------
-- labels.npy          (N,) int8  0=red, 1=blue
-- isolated_nodes.npy  (K,) int    nodes with total degree < `min_cross`
-- edges_final.npy     (M,2) int   copy of original edge list
-- weights_final.npy   (M,) float  copy of original weights
-
-Usage
------
-    python 05__bipartite_partitioning_v2.py [--min-cross 2] [--view]
-
-Algorithm (per iteration O(|E|))
--------------------------------
-1) Initial 2-coloring via BFS (no edge removal).
-2) Recompute cross-degree; flip nodes whose flipped cross-degree meets `min_cross`.
-3) Stop when no flips occur. Nodes with degree < `min_cross` are reported as isolated.
+Step 06 — Prepare ADMM matrices (v3: correct constraints)
+- B_{opt}.npz: 3*|E_set| x 3*N_total
+- v_{opt}.npy: len = 3*|E_set|
+- C.npz, q.npy: constrain ORIGINAL low-res points (first M rows), where
+  M is read from --low-res .xyz (default: input/low_res.xyz if present).
 """
-from __future__ import annotations
-import argparse, sys, os
+import argparse, os, sys
 import numpy as np
-import open3d as o3d
-from collections import deque
-from pathlib import Path
-from typing import List
+import scipy.sparse as sp
 
-# ---------------------------------------------------------------------------
-# I/O helpers
-# ---------------------------------------------------------------------------
+def load_labels_edges(dir_path: str):
+    labels = np.load(os.path.join(dir_path, "labels.npy"))
+    edges  = np.load(os.path.join(dir_path, "edges_final.npy")).astype(np.int64)
+    iso_p  = os.path.join(dir_path, "isolated_nodes.npy")
+    isolated = np.load(iso_p) if os.path.isfile(iso_p) else np.array([], dtype=np.int64)
+    return labels, edges, isolated
 
-def load_graph(dir_path: Path):
-    pts  = np.loadtxt(dir_path / "points_all.xyz")
-    E    = np.load(dir_path / "edges.npy").astype(int)
-    W    = np.load(dir_path / "weights.npy")
-    return pts, E, W
+def build_Bv(points: np.ndarray, edges: np.ndarray,
+             labels: np.ndarray, set_id: int, isolated: np.ndarray):
+    mask_iso = np.zeros(labels.shape[0], dtype=bool)
+    mask_iso[isolated] = True
+    sel = (labels[edges[:,0]] == set_id) & (labels[edges[:,1]] == set_id) \
+          & (~mask_iso[edges[:,0]]) & (~mask_iso[edges[:,1]])
+    E_sel = edges[sel]
+    N_total = points.shape[0]
+    rows, cols, data, v_list = [], [], [], []
+    for e,(i,j) in enumerate(E_sel):
+        base = 3*e
+        # simple linear proxy: n_i - n_j ≈ p_i - p_j
+        for d in range(3):
+            rows.append(base+d); cols.append(3*i+d); data.append(+1.0)
+            rows.append(base+d); cols.append(3*j+d); data.append(-1.0)
+        v_list.extend(list(points[i] - points[j]))
+    B = sp.csr_matrix((data,(rows,cols)), shape=(3*len(E_sel), 3*N_total))
+    v = np.asarray(v_list, dtype=np.float64)
+    return B, v, E_sel
 
-
-def save_outputs(dir_path: Path, labels: np.ndarray, E: np.ndarray, W: np.ndarray, iso: np.ndarray):
-    np.save(dir_path / "labels.npy", labels.astype(np.int8))
-    np.save(dir_path / "edges_final.npy", E)
-    np.save(dir_path / "weights_final.npy", W)
-    np.save(dir_path / "isolated_nodes.npy", iso)
-    print(f"[INFO] saved labels / edges_final / weights_final in {dir_path}")
-
-
-# ---------------------------------------------------------------------------
-# Core algorithm
-# ---------------------------------------------------------------------------
-
-def partition(pts: np.ndarray, E: np.ndarray, min_cross: int = 2):
-    N = len(pts)
-
-    # Build adjacency
-    adj: List[List[int]] = [[] for _ in range(N)]
-    for u, v in E:
-        adj[u].append(v)
-        adj[v].append(u)
-
-    # Initial BFS coloring
-    labels = -np.ones(N, dtype=np.int8)
-    for root in range(N):
-        if labels[root] != -1:
-            continue
-        labels[root] = 0  # red
-        q: deque[int] = deque([root])
-        while q:
-            u = q.popleft()
-            cu = labels[u]
-            for v in adj[u]:
-                if labels[v] == -1:
-                    labels[v] = 1 - cu  # opposite color
-                    q.append(v)
-    print("[INFO] initial colouring done (BFS)")
-
-    # Enforce cross-degree via flips
-    changed = True
-    passes = 0
-    while changed:
-        changed = False
-        passes += 1
-        cross_deg = np.zeros(N, dtype=int)
-        deg       = np.fromiter((len(adj[i]) for i in range(N)), dtype=int, count=N)
-        for u, v in E:
-            if labels[u] != labels[v]:
-                cross_deg[u] += 1
-                cross_deg[v] += 1
-
-        # Nodes that would meet threshold after flipping
-        to_flip = []
-        for i in range(N):
-            if cross_deg[i] >= min_cross:
-                continue
-            if deg[i] - cross_deg[i] >= min_cross:
-                to_flip.append(i)
-        if to_flip:
-            labels[to_flip] ^= 1
-            changed = True
-            print(f"[DEBUG] pass {passes}: flipped {len(to_flip)} vertices")
-
-    # Nodes impossible to fix due to low total degree
-    iso = np.flatnonzero(deg < min_cross)
-    if len(iso):
-        print(f"[WARN] {len(iso)} vertices totally isolated (deg < {min_cross}) – written to isolated_nodes.npy")
-    print(f"[INFO] partition finished in {passes} passes")
-    return labels, iso
-
-
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
+def build_Cq_fix_first_M(points_all: np.ndarray, M: int):
+    """Pin the first M global vertices to their current coords."""
+    N_total = points_all.shape[0]
+    if M <= 0 or M > N_total:
+        sys.exit(f"[ERROR] invalid M={M} for C (N_total={N_total})")
+    rows, cols, data, q = [], [], [], []
+    for r, gidx in enumerate(range(M)):
+        for d in range(3):
+            rows.append(3*r+d); cols.append(3*gidx+d); data.append(1.0)
+            q.append(points_all[gidx, d])
+    C = sp.csr_matrix((data,(rows,cols)), shape=(3*M, 3*N_total))
+    return C, np.asarray(q, dtype=np.float64)
 
 def main():
-    ap = argparse.ArgumentParser("Step 05 — partition RED/BLUE sets (v2.4)")
-    ap.add_argument("--dir", default="intermediate", help="directory containing points_all.xyz, edges.npy, weights.npy")
-    ap.add_argument("--min-cross", type=int, default=2, help="required opposite-colour neighbours (default 2)")
-    ap.add_argument("--view", action="store_true", help="visualise  colouring in Open3D viewer")
+    ap = argparse.ArgumentParser("Step 06 — prepare ADMM matrices (v3)")
+    ap.add_argument("--opt", choices=["red","blue"], required=True,
+                    help="which set to prepare")
+    ap.add_argument("--dir", default="intermediate",
+                    help="folder with points_all.xyz, labels.npy, edges_final.npy")
+    ap.add_argument("--low-res", default=None,
+                    help="path to low-res .xyz to count M originals (default tries input/*.xyz)")
     args = ap.parse_args()
 
-    d = Path(args.dir)
-    required = [d / "points_all.xyz", d / "edges.npy", d / "weights.npy"]
-    for f in required:
-        if not f.is_file():
-            sys.exit(f"[ERROR] missing required file: {f}")
+    set_id = 0 if args.opt=="red" else 1
+    pts_all = np.loadtxt(os.path.join(args.dir, "points_all.xyz"))
+    labels, edges, isolated = load_labels_edges(args.dir)
 
-    pts, E, W = load_graph(d)
-    labels, iso = partition(pts, E, min_cross=args.min_cross)
-    save_outputs(d, labels, E, W, iso)
+    # Determine M (original low-res count)
+    if args.low_res is not None:
+        low_path = args.low_res
 
-    # Optional viewer
-    if args.view:
-        pcd = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(pts))
-        colours = np.zeros((len(pts), 3))
-        colours[labels == 0] = [1, 0, 0]
-        colours[labels == 1] = [0, 0, 1]
-        pcd.colors = o3d.utility.Vector3dVector(colours)
-        o3d.visualization.draw_geometries([pcd], window_name="RED / BLUE partition (v2.4)")
+    else:
+        # try common defaults; adjust if your path differs
+        # 08__merge_and_evaluate__ used these names, so try them:
+        candidates = [
+            "input/Asterix_downsampled_30pct.xyz",
+            "input/low_res.xyz",
+            "input/low.xyz"
+        ]
+        low_path = next((p for p in candidates if os.path.isfile(p)), None)
+    if low_path is None:
+        sys.exit("[ERROR] --low-res not given and no default input/*low*.xyz found")
+    M = np.loadtxt(low_path).shape[0]
+    print(f"[INFO] using M={M} original vertices from {low_path}")
+
+    # Build and save
+    B,v,E_sel = build_Bv(pts_all, edges, labels, set_id, isolated)
+    sp.save_npz(os.path.join(args.dir, f"B_{args.opt}.npz"), B)
+    np.save(os.path.join(args.dir, f"v_{args.opt}.npy"), v)
+
+    C,q = build_Cq_fix_first_M(pts_all, M)
+    sp.save_npz(os.path.join(args.dir, "C.npz"), C)
+    np.save(os.path.join(args.dir, "q.npy"), q)
+
+    print(f"[INFO] B_{args.opt}.npz  shape {B.shape}")
+    print(f"[INFO] v_{args.opt}.npy  len {len(v)}")
+    print(f"[INFO] C.npz            shape {C.shape}  (M={M})")
+    print(f"[INFO] q.npy            len {len(q)}")
+    print(f"[INFO] edges used       {len(E_sel)}")
 
 if __name__ == "__main__":
     main()

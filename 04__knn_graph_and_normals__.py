@@ -4,14 +4,18 @@ import open3d as o3d
 import pickle, os
 
 def build_knn_graph_xyz(xyz_combined: np.ndarray, k: int = 8):
+    #build point cloud from all points(low + centroids)
     pcd = o3d.geometry.PointCloud(o3d.utility.Vector3dVector(xyz_combined))
+    #estimate normals
     pcd.estimate_normals(
         search_param=o3d.geometry.KDTreeSearchParamKNN(knn=k)
     )
+    #normalize normals
     pcd.normalize_normals()
 
     # وزن‌ها: exp( -||p_i-p_j||² / σ_p² ) * cos² θ
     tree = o3d.geometry.KDTreeFlann(pcd)
+    # average distance for each point to its k nearest neighbors
     σ_p = np.mean(pcd.compute_nearest_neighbor_distance())
     edges, weights = [], []
     normals = np.asarray(pcd.normals)
@@ -29,12 +33,12 @@ def build_knn_graph_xyz(xyz_combined: np.ndarray, k: int = 8):
 
 if __name__ == "__main__":
     xyz_low  = np.loadtxt("input/Asterix_downsampled_30pct.xyz")
-    xyz_cent = np.loadtxt("output/Asterix_downsampled_30pct_centroids.xyz")
+    xyz_cent = np.loadtxt("intermediate/Asterix_downsampled_30pct_centroids.xyz")
     xyz_all  = np.vstack((xyz_low, xyz_cent))
 
     pcd, E, W = build_knn_graph_xyz(xyz_all, k=8)
 
-    # ذخیرهٔ گراف و نرمال‌ها برای مرحلهٔ بعد
+    # save point cloud with normals
     os.makedirs("intermediate", exist_ok=True)
     np.savetxt("intermediate/points_all.xyz", xyz_all, fmt="%.6f")
     np.save("intermediate/edges.npy",    E)

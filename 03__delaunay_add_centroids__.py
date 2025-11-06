@@ -26,6 +26,7 @@ def compute_centroids_delaunay_xyz(xyz_path: str, alpha: float | None = None,
 
     mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_alpha_shape(pcd, alpha)
 
+    #Extracts the triangles and vertices from the mesh
     tris = np.asarray(mesh.triangles)
     verts = np.asarray(mesh.vertices)          # same coords as `pts` (possibly re-ordered)
     centroids = verts[tris].mean(axis=1)       # (M,3)
